@@ -302,6 +302,40 @@ def inspect_peft(args: argparse.Namespace) -> None:
     print(report)
 
 
+def merge_adapter(args: argparse.Namespace) -> None:
+    from true_lora.merge import merge_adapter_into_hf_model
+
+    report = merge_adapter_into_hf_model(
+        adapter_path=args.adapter,
+        model_name_or_path=args.model,
+        output_dir=args.out,
+        dtype=args.dtype,
+        device=args.device,
+        allow_download=args.allow_download,
+    )
+    maybe_write_report(args.report_out, {"command": "merge-adapter", **report})
+    print(f"Merged adapter into {report['output_dir']}")
+    print(report)
+
+
+def merge_adapters(args: argparse.Namespace) -> None:
+    from true_lora.merge import merge_adapters
+
+    weights = [float(w) for w in args.weights.split(",")] if args.weights else None
+    report = merge_adapters(
+        adapter_paths=args.adapters,
+        model_name_or_path=args.model,
+        output_dir=args.out,
+        weights=weights,
+        dtype=args.dtype,
+        device=args.device,
+        allow_download=args.allow_download,
+    )
+    maybe_write_report(args.report_out, {"command": "merge-adapters", **report})
+    print(f"Merged {len(args.adapters)} adapters into {report['output_dir']}")
+    print(report)
+
+
 def bench(args: argparse.Namespace) -> None:
     state_dict = load_torch_state_dict(args.adapter)
     benchmark = load_classification_jsonl(args.benchmark, state_dict, module_name=args.module)
@@ -701,6 +735,27 @@ def main() -> None:
     inspect_parser.add_argument("--adapter-dir", type=Path, required=True)
     inspect_parser.add_argument("--report-out", type=Path)
     inspect_parser.set_defaults(func=inspect_peft)
+
+    merge_parser = sub.add_parser("merge-adapter")
+    merge_parser.add_argument("--adapter", type=Path, required=True)
+    merge_parser.add_argument("--model", required=True)
+    merge_parser.add_argument("--out", type=Path, required=True)
+    merge_parser.add_argument("--dtype", default="float32", choices=["float32", "float16", "bfloat16"])
+    merge_parser.add_argument("--device", default="cpu")
+    merge_parser.add_argument("--allow-download", action="store_true")
+    merge_parser.add_argument("--report-out", type=Path)
+    merge_parser.set_defaults(func=merge_adapter)
+
+    merge_multi_parser = sub.add_parser("merge-adapters")
+    merge_multi_parser.add_argument("--adapters", nargs="+", type=Path, required=True)
+    merge_multi_parser.add_argument("--model", required=True)
+    merge_multi_parser.add_argument("--out", type=Path, required=True)
+    merge_multi_parser.add_argument("--weights", default=None, help="Comma-separated weights (e.g., 0.5,0.5)")
+    merge_multi_parser.add_argument("--dtype", default="float32", choices=["float32", "float16", "bfloat16"])
+    merge_multi_parser.add_argument("--device", default="cpu")
+    merge_multi_parser.add_argument("--allow-download", action="store_true")
+    merge_multi_parser.add_argument("--report-out", type=Path)
+    merge_multi_parser.set_defaults(func=merge_adapters)
 
     bench_parser = sub.add_parser("bench")
     bench_parser.add_argument("--adapter", type=Path, required=True)

@@ -10,6 +10,7 @@ from true_lora.hf_eval import (
     load_generation_jsonl,
     load_text_classification_jsonl,
 )
+from true_lora.merge import merge_adapter_into_hf_model, merge_adapters
 from true_lora.peft_io import inspect_peft_directory, load_peft_directory, load_peft_model
 from true_lora.repro import set_seed
 from true_lora.reporting import audit_reports, compare_reports, load_audit_profile, load_json_report, write_json_report
@@ -37,6 +38,8 @@ __all__ = [
     "evaluate_hf_causal_lm_generation",
     "load_generation_jsonl",
     "load_text_classification_jsonl",
+    "merge_adapter_into_hf_model",
+    "merge_adapters",
     "inspect_peft_directory",
     "load_peft_directory",
     "load_peft_model",

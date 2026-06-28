@@ -1,18 +1,68 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "true-lora"
 version = "0.1.0"
-description = "A retrieval-grounded, uncertainty-aware Text-to-LoRA prototype."
+description = "Retrieval-Grounded, Uncertainty-Aware Text-to-LoRA Generation"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
-dependencies = [
-  "torch>=2.0",
+authors = [
+    {name = "TrueLora Team"},
 ]
+keywords = ["lora", "adapter", "peft", "nlp", "transfer-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+hf = [
+    "transformers>=4.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+all = [
+    "transformers>=4.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/MARVserver/TrueLora"
+Documentation = "https://github.com/MARVserver/TrueLora/wiki"
+Repository = "https://github.com/MARVserver/TrueLora"
+Issues = "https://github.com/MARVserver/TrueLora/issues"
 
 [project.scripts]
 true-lora = "true_lora.cli:main"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+true_lora = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
