@@ -3,7 +3,15 @@ from true_lora.apply import lora_delta, merge_lora_into_linear, temporary_lora
 from true_lora.bank import adapter_bank_summary
 from true_lora.benchmark import evaluate_classification, load_classification_jsonl
 from true_lora.consistency import adapter_pair_mse, load_prompt_groups, prompt_consistency_report
-from true_lora.generator import TrueLoraGenerator, load_true_lora_checkpoint
+from true_lora.generator import (
+    ConditionedHyperAdapter,
+    HyperAdapter,
+    TrueLoraGenerator,
+    layer_index,
+    load_true_lora_checkpoint,
+    module_key,
+)
+from true_lora.text import HashingTextEncoder, SemanticTextEncoder
 from true_lora.hf_eval import (
     evaluate_hf_causal_lm_generation,
     evaluate_hf_sequence_classification,
@@ -24,6 +32,12 @@ __all__ = [
     "adapter_fingerprint",
     "validate_adapter_manifest",
     "TrueLoraGenerator",
+    "HyperAdapter",
+    "ConditionedHyperAdapter",
+    "HashingTextEncoder",
+    "SemanticTextEncoder",
+    "module_key",
+    "layer_index",
     "load_true_lora_checkpoint",
     "lora_delta",
     "merge_lora_into_linear",
