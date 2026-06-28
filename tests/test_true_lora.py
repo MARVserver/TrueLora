@@ -125,6 +125,31 @@ def test_conditioned_hypernetwork_trains():
     assert losses[-1] < losses[0]
 
 
+def test_bankless_generation_uses_hypernetwork_only():
+    import math
+
+    encoder = HashingTextEncoder(dim=32)
+    specs = make_gqa_specs([0, 6])
+    _, adapters = make_conditioned_bank(specs, encoder)
+    # No adapter_bank: pure text-to-LoRA via the hypernetwork.
+    model = TrueLoraGenerator(
+        specs, adapter_bank=None, text_dim=32, hidden_dim=32, max_tensor_norm=0.5,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    # Training does not need a bank -- it learns straight from (description -> tensors).
+    losses = train_on_adapter_bank(model, adapters, steps=40, lr=1e-2)
+    assert losses[-1] < losses[0]
+
+    state_dict, report = model.generate("python code generation", retrieval_k=8)
+    assert state_dict["model.layers.0.self_attn.v_proj.lora_B.weight"].shape == (4, 4)
+    assert all(tensor.norm() <= 0.5001 for tensor in state_dict.values())
+    # No retrieval happened.
+    assert report["retrieved_adapters"] == []
+    assert math.isnan(report["max_retrieval_score"])
+    assert report["generated_weight"] == 1.0
+    assert 0.0 <= report["uncertainty"] <= 1.0
+
+
 def test_semantic_encoder_interface():
     encoder = SemanticTextEncoder(fallback_dim=48)
     vector = encoder.encode("python code generation")
