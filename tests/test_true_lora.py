@@ -8,6 +8,15 @@ from true_lora.generator import (
     layer_index,
     module_key,
 )
+from true_lora.reliability import (
+    HistogramBinningCalibrator,
+    area_under_risk_coverage,
+    expected_calibration_error,
+    reliability_report,
+    reliability_report_for_adapters,
+    risk_coverage_points,
+    selective_risk_at_coverage,
+)
 from true_lora.text import HashingTextEncoder, SemanticTextEncoder
 from true_lora.train import train_on_adapter_bank
 
@@ -123,3 +132,66 @@ def test_semantic_encoder_interface():
     # Vectors are L2-normalized for the cosine-similarity retrieval contract.
     assert abs(float(vector.norm()) - 1.0) < 1e-4
     assert encoder.backend in {"sentence-transformers", "hashing-fallback"}
+
+
+def test_ece_zero_for_perfectly_calibrated():
+    # Confidence exactly equals long-run accuracy in each group -> ECE 0.
+    confidences = [0.1] * 10 + [0.9] * 10
+    corrects = [1.0] + [0.0] * 9 + [1.0] * 9 + [0.0]
+    report = expected_calibration_error(confidences, corrects, n_bins=10)
+    assert report["ece"] < 1e-9
+
+
+def test_ece_detects_overconfidence():
+    # Always says 0.99 confident but only half are right -> large gap.
+    confidences = [0.99] * 20
+    corrects = [1.0] * 10 + [0.0] * 10
+    report = expected_calibration_error(confidences, corrects, n_bins=10)
+    assert report["ece"] > 0.4
+
+
+def test_risk_coverage_rewards_good_confidence_ranking():
+    # Confidence perfectly anti-correlates with loss: most confident are lossless.
+    confidences = [0.9, 0.8, 0.7, 0.6]
+    losses = [0.0, 0.0, 1.0, 1.0]
+    points = risk_coverage_points(confidences, losses)
+    assert points[0]["risk"] == 0.0  # most confident is correct
+    assert points[-1]["coverage"] == 1.0
+    # Selective generation at 50% coverage takes only the lossless half.
+    assert selective_risk_at_coverage(confidences, losses, 0.5) == 0.0
+    # Good ranking -> AURC below the full-coverage (mean) risk of 0.5.
+    assert area_under_risk_coverage(confidences, losses) < 0.5
+
+
+def test_calibrator_reduces_ece():
+    torch.manual_seed(0)
+    # Confidence is informative but miscalibrated (squashed toward 0.5).
+    raw_conf = []
+    corrects = []
+    for _ in range(400):
+        p = float(torch.rand(1))
+        y = 1.0 if float(torch.rand(1)) < p else 0.0
+        raw_conf.append(0.5 + 0.3 * (p - 0.5))  # compressed -> miscalibrated
+        corrects.append(y)
+    before = expected_calibration_error(raw_conf, corrects)["ece"]
+    calibrator = HistogramBinningCalibrator(n_bins=10).fit(raw_conf, corrects)
+    after = expected_calibration_error(calibrator.transform(raw_conf), corrects)["ece"]
+    assert after <= before + 1e-9
+
+
+def test_reliability_report_for_adapters_bridges_generator():
+    encoder = HashingTextEncoder(dim=32)
+    specs = make_gqa_specs([0, 6])
+    bank, adapters = make_conditioned_bank(specs, encoder)
+    model = TrueLoraGenerator(
+        specs, bank, text_dim=32, hidden_dim=32, max_tensor_norm=4.0,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    report = reliability_report_for_adapters(
+        model, adapters, tolerance=0.05, retrieval_k=2, min_retrieval_score=0.9
+    )
+    assert "ece" in report and "aurc" in report
+    assert "calibrated_ece" in report
+    assert 0.0 <= report["selective_risk"]["coverage_0.8"]
+    assert "abstention" in report
+    assert len(report["records"]) == len(adapters)

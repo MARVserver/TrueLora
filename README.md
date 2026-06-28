@@ -231,6 +231,37 @@ if report["accepted"]:
     pass
 ```
 
+### Reliability: Calibration, Selective Prediction & Abstention
+
+A text-to-LoRA hypernetwork always emits *something* — when the task description is
+out of distribution it silently produces a low-quality adapter. True-LoRA's
+differentiator is reporting **when it does not know**:
+
+- **Calibration (ECE/MCE)** — is a confidence of 0.8 actually right 80% of the time?
+  A `HistogramBinningCalibrator` re-maps raw confidence to empirical accuracy.
+- **Selective prediction (risk-coverage / AURC)** — answer only the most confident
+  fraction and measure the residual risk; a good confidence signal yields low risk
+  at high coverage.
+- **Abstention** — contrast the risk of answered vs abstained samples to confirm the
+  OOD abstain path catches the bad ones.
+
+```python
+from true_lora.reliability import reliability_report_for_adapters
+
+report = reliability_report_for_adapters(model, adapters, tolerance=0.02, calibrate=True)
+print(report["ece"], report["calibrated_ece"])         # raw vs calibrated
+print(report["aurc"], report["selective_risk"])        # selective generation
+print(report["abstention"])                            # answered vs abstained risk
+```
+
+From the CLI, generate a reliability report and gate on it:
+
+```bash
+true-lora reliability --manifest adapters.jsonl --checkpoint ckpt.pt --report-out rel.json
+true-lora gate --adapter generated.pt --reliability-report rel.json \
+  --max-ece 0.1 --max-aurc 0.05 --max-selective-risk 0.02
+```
+
 ### Prompt Consistency Analysis
 
 Evaluate how consistent the adapter generation is across similar prompts:

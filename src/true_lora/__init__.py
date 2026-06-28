@@ -20,6 +20,16 @@ from true_lora.hf_eval import (
 )
 from true_lora.merge import merge_adapter_into_hf_model, merge_adapters
 from true_lora.peft_io import inspect_peft_directory, load_peft_directory, load_peft_model
+from true_lora.reliability import (
+    HistogramBinningCalibrator,
+    area_under_risk_coverage,
+    collect_generation_records,
+    expected_calibration_error,
+    reliability_report,
+    reliability_report_for_adapters,
+    risk_coverage_points,
+    selective_risk_at_coverage,
+)
 from true_lora.repro import set_seed
 from true_lora.reporting import audit_reports, compare_reports, load_audit_profile, load_json_report, write_json_report
 from true_lora.sensitivity import PromptContrast, load_prompt_contrasts, prompt_sensitivity_report
@@ -67,4 +77,12 @@ __all__ = [
     "load_prompt_contrasts",
     "prompt_sensitivity_report",
     "ablation_report",
+    "expected_calibration_error",
+    "risk_coverage_points",
+    "area_under_risk_coverage",
+    "selective_risk_at_coverage",
+    "HistogramBinningCalibrator",
+    "reliability_report",
+    "collect_generation_records",
+    "reliability_report_for_adapters",
 ]
