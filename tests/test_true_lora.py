@@ -125,6 +125,72 @@ def test_conditioned_hypernetwork_trains():
     assert losses[-1] < losses[0]
 
 
+class _TinyBase(torch.nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.proj = torch.nn.Linear(dim, dim, bias=False)
+
+    def forward(self, x):
+        return self.proj(x)
+
+
+def test_lora_sft_model_application_matches_lora_delta():
+    from true_lora.apply import lora_delta
+    from true_lora.sft import LoraSFTModel
+
+    torch.manual_seed(0)
+    dim, rank = 8, 4
+    base = _TinyBase(dim)
+    spec = LoraTensorSpec("proj", out_features=dim, in_features=dim, rank=rank, alpha=rank)
+    a = torch.randn(rank, dim) * 0.1
+    b = torch.randn(dim, rank) * 0.1
+    x = torch.randn(3, dim)
+
+    with LoraSFTModel(base, [spec]) as sft:
+        sft.set_adapter({"proj.lora_A.weight": a, "proj.lora_B.weight": b})
+        hooked = base(x)
+
+    delta_w = lora_delta(a, b, alpha=spec.alpha)  # (out, in)
+    expected = base(x) + x @ delta_w.T
+    assert torch.allclose(hooked, expected, atol=1e-5)
+
+
+def test_sft_train_hypernetwork_reduces_downstream_loss():
+    from true_lora.sft import sft_train_hypernetwork
+
+    torch.manual_seed(0)
+    dim, rank = 8, 4
+    base = _TinyBase(dim)
+    spec = LoraTensorSpec("proj", out_features=dim, in_features=dim, rank=rank, alpha=rank)
+
+    # A perfect rank-r LoRA exists: target = base_weight + B0 @ A0 (scale = alpha/rank = 1).
+    a0 = torch.randn(rank, dim) * 0.3
+    b0 = torch.randn(dim, rank) * 0.3
+    target_w = base.proj.weight.detach() + b0 @ a0
+    x = torch.randn(32, dim)
+    y = x @ target_w.T
+
+    def mse_loss_fn(model, payload):
+        xb, yb = payload
+        return torch.nn.functional.mse_loss(model(xb), yb)
+
+    encoder = HashingTextEncoder(dim=16)
+    generator = TrueLoraGenerator(
+        [spec], adapter_bank=None, text_dim=16, hidden_dim=32,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    losses = sft_train_hypernetwork(
+        generator, base, [("correct the projection", (x, y))], mse_loss_fn,
+        steps=250, lr=1e-2,
+    )
+
+    # End-to-end SFT drives the downstream loss down...
+    assert losses[-1] < losses[0] * 0.5
+    # ...and the base model stays frozen while the hypernetwork learns.
+    assert base.proj.weight.requires_grad is False
+    assert any(p.grad is not None for p in generator.hyper.parameters())
+
+
 def test_bankless_generation_uses_hypernetwork_only():
     import math
 
