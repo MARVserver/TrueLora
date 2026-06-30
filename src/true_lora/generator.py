@@ -397,6 +397,9 @@ class TrueLoraGenerator:
             retrieval_metric=retrieval_metric,
             metric_weight=metric_weight,
             min_retrieval_score=min_retrieval_score,
+            ensemble=ensemble,
+            ensemble_noise=ensemble_noise,
+            ensemble_seed=ensemble_seed,
         )
 
     def components_from_embedding(
@@ -406,6 +409,9 @@ class TrueLoraGenerator:
         retrieval_metric: str | None = None,
         metric_weight: float = 0.0,
         min_retrieval_score: float | None = None,
+        ensemble: int = 1,
+        ensemble_noise: float = 0.05,
+        ensemble_seed: int = 0,
     ) -> tuple[dict[str, dict[str, torch.Tensor]], dict[str, object]]:
         """Generate from a pre-computed task embedding (bypasses the text encoder).
 
