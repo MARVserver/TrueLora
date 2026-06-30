@@ -1,6 +1,7 @@
 from true_lora.adapter import AdapterBank, AdapterSpec, LoraTensorSpec, adapter_fingerprint, validate_adapter_manifest
 from true_lora.apply import lora_delta, merge_lora_into_linear, temporary_lora
 from true_lora.bank import adapter_bank_summary
+from true_lora.compose import blend_embeddings, compose_lora, task_arithmetic
 from true_lora.benchmark import evaluate_classification, load_classification_jsonl
 from true_lora.consistency import adapter_pair_mse, load_prompt_groups, prompt_consistency_report
 from true_lora.generator import (
@@ -100,4 +101,7 @@ __all__ = [
     "pearson_correlation",
     "zero_shot_benchmark",
     "run_zero_shot_benchmark",
+    "compose_lora",
+    "task_arithmetic",
+    "blend_embeddings",
 ]

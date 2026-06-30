@@ -360,6 +360,25 @@ class TrueLoraGenerator:
         )
         return components["blended"], report
 
+    def compose(
+        self,
+        prompts: list[str],
+        weights: list[float] | None = None,
+        *,
+        mode: str = "embedding",
+        **kwargs,
+    ) -> tuple[dict[str, torch.Tensor], dict[str, object]]:
+        """Compose several task descriptions into one LoRA (task arithmetic).
+
+        Thin convenience wrapper over :func:`true_lora.compose.compose_lora`. ``mode``
+        is ``"embedding"`` (blend the task embeddings, then generate once) or
+        ``"delta"`` (generate each LoRA, then weight-sum the deltas). ``weights`` may
+        be negative to subtract a task/style.
+        """
+        from true_lora.compose import compose_lora
+
+        return compose_lora(self, prompts, weights, mode=mode, **kwargs)
+
     def generate_components(
         self,
         prompt: str,
@@ -372,7 +391,28 @@ class TrueLoraGenerator:
         ensemble_seed: int = 0,
     ) -> tuple[dict[str, dict[str, torch.Tensor]], dict[str, object]]:
         embedding = self.encoder.encode(prompt)
+        return self.components_from_embedding(
+            embedding,
+            retrieval_k=retrieval_k,
+            retrieval_metric=retrieval_metric,
+            metric_weight=metric_weight,
+            min_retrieval_score=min_retrieval_score,
+        )
 
+    def components_from_embedding(
+        self,
+        embedding: torch.Tensor,
+        retrieval_k: int = 4,
+        retrieval_metric: str | None = None,
+        metric_weight: float = 0.0,
+        min_retrieval_score: float | None = None,
+    ) -> tuple[dict[str, dict[str, torch.Tensor]], dict[str, object]]:
+        """Generate from a pre-computed task embedding (bypasses the text encoder).
+
+        This is the embedding-driven core of :meth:`generate_components`; composing
+        several prompts in embedding space (see :mod:`true_lora.compose`) calls it
+        directly with a blended embedding.
+        """
         # Bankless (pure text-to-LoRA) mode: no retrieval database, the hypernetwork
         # alone maps the prompt to a LoRA. Used when no adapter bank is provided.
         if self.adapter_bank is None:

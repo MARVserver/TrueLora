@@ -1,6 +1,7 @@
 import torch
 
 from true_lora.adapter import AdapterBank, AdapterSpec, LoraTensorSpec
+from true_lora.compose import blend_embeddings, compose_lora, task_arithmetic
 from true_lora.generator import (
     ConditionedHyperAdapter,
     HyperAdapter,
@@ -525,3 +526,76 @@ def test_anchors_do_not_change_blended_adapter_only_confidence():
     assert set(before) == set(after)
     for key in before:
         assert torch.allclose(before[key], after[key], atol=1e-6)
+
+
+def test_compose_delta_is_exact_linear_combination():
+    torch.manual_seed(0)
+    encoder = HashingTextEncoder(dim=32)
+    specs = make_gqa_specs([0, 6])
+    bank, _ = make_conditioned_bank(specs, encoder)
+    # Large norm budget -> clipping is a no-op, so the combo is exact and testable.
+    model = TrueLoraGenerator(
+        specs, bank, text_dim=32, hidden_dim=32, max_tensor_norm=1e6,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    p1, p2 = "python code generation", "japanese translation"
+    g1, _ = model.generate(p1, retrieval_k=2)
+    g2, _ = model.generate(p2, retrieval_k=2)
+
+    composed, report = model.compose([p1, p2], [0.5, 0.5], mode="delta", retrieval_k=2)
+    assert report["composition"] == {"prompts": [p1, p2], "weights": [0.5, 0.5], "mode": "delta"}
+    for name in g1:
+        assert torch.allclose(composed[name], 0.5 * g1[name] + 0.5 * g2[name], atol=1e-5)
+
+    # Weight fully on one prompt recovers that prompt's adapter.
+    only_first, _ = model.compose([p1, p2], [1.0, 0.0], mode="delta", retrieval_k=2)
+    for name in g1:
+        assert torch.allclose(only_first[name], g1[name], atol=1e-5)
+
+
+def test_compose_embedding_is_scale_invariant_direction():
+    # Duplicating a prompt with equal weights keeps the same normalized embedding,
+    # so the embedding-mode composition matches the single-prompt one.
+    encoder = HashingTextEncoder(dim=32)
+    specs = make_gqa_specs([0])
+    model = TrueLoraGenerator(
+        specs, adapter_bank=None, text_dim=32, hidden_dim=32,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    single, _ = model.compose(["step-by-step reasoning"], [1.0], mode="embedding")
+    doubled, rep = model.compose(["step-by-step reasoning"] * 2, [0.5, 0.5], mode="embedding")
+    assert rep["composition"]["mode"] == "embedding"
+    assert set(single) == set(doubled)
+    for name in single:
+        assert torch.allclose(single[name], doubled[name], atol=1e-6)
+
+
+def test_task_arithmetic_subtraction_moves_output():
+    encoder = HashingTextEncoder(dim=64)
+    specs = make_gqa_specs([0])
+    model = TrueLoraGenerator(
+        specs, adapter_bank=None, text_dim=64, hidden_dim=32,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    plain, _ = model.compose(["formal writing"], [1.0], mode="embedding")
+    arith, rep = task_arithmetic(model, ["formal writing"], ["casual writing"], mode="embedding")
+    assert rep["composition"]["weights"] == [1.0, -1.0]
+    # Subtracting a concept shifts the embedding, so the adapter must change.
+    assert any(not torch.allclose(plain[n], arith[n], atol=1e-4) for n in plain)
+
+
+def test_compose_validation():
+    import pytest
+
+    encoder = HashingTextEncoder(dim=16)
+    specs = make_gqa_specs([0])
+    model = TrueLoraGenerator(
+        specs, adapter_bank=None, text_dim=16, hidden_dim=16,
+        encoder=encoder, hyper_kind="conditioned",
+    )
+    with pytest.raises(ValueError):
+        model.compose(["a", "b"], [1.0], mode="embedding")  # weights/prompts mismatch
+    with pytest.raises(ValueError):
+        model.compose(["a"], mode="banana")                  # unknown mode
+    with pytest.raises(ValueError):
+        compose_lora(model, [], mode="embedding")            # no prompts
