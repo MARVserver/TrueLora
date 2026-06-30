@@ -60,6 +60,7 @@ Training: reconstruction (copy example LoRAs)  │  end-to-end SFT
 - **Bankless or Retrieval-Grounded**: Run as pure text-to-LoRA (`adapter_bank=None`) or blend in retrieved neighbors from an adapter bank
 - **Semantic Text Encoder**: Multilingual sentence embeddings (with an offline hashing fallback) so cross-lingual descriptions like `"binary search"` and `"二分探索"` land near each other
 - **Conditioned Hypernetwork**: A shared trunk conditioned on `(task, layer, module)` whose parameters scale with the number of *module types*, not the number of layers — ~28× smaller than a flat generator on a 28-layer model
+- **Compositional LoRA (task arithmetic)**: Compose several task descriptions into one adapter — `"python code" + "日本語"` — or subtract a style — `formal - casual` — in embedding space or by weight-summing deltas, without ever training on the exact combination
 - **End-to-End SFT**: Train the hypernetwork through a differentiable LoRA application and a real downstream loss, not just weight reconstruction
 - **Calibrated Reliability**: ECE/MCE, risk-coverage/AURC selective prediction, and an OOD abstain path — know when to trust or abstain
 - **Honest Zero-Shot Generalization**: a held-out benchmark that measures the generalization gap *and* whether confidence actually predicts it (calibration linkage), backed by a training-free novelty signal that lowers confidence on unseen prompts
@@ -96,6 +97,32 @@ The conditioned hypernetwork parses each `LoraTensorSpec` name into a `(layer in
 module type)` pair: the same module type at different layers shares an output head and
 a module embedding, differing only via a per-layer embedding. This is what keeps the
 parameter count flat as model depth grows.
+
+### Compositional LoRA (task arithmetic)
+
+Text-to-LoRA generates an adapter for one description at a time. Real workloads are
+often a mix (*"Python code, explained in Japanese"*) or a style delta
+(*"formal, minus casual"*). True-LoRA composes these **without training on the exact
+combination**, two ways:
+
+- **embedding-space** — blend the task embeddings, then run the hypernetwork once;
+  leans on the conditioned hypernetwork's smoothness, and negative weights move
+  *away* from a concept (subtraction).
+- **delta-space** — generate each task's LoRA independently, then weight-sum the
+  deltas (norm-clipped). Exact and predictable; works bankless or retrieval-grounded.
+
+```python
+# Mix two tasks (60% code, 40% Japanese):
+state_dict, report = model.compose(
+    ["write efficient python code", "日本語で丁寧に説明する"],
+    weights=[0.6, 0.4],
+    mode="embedding",   # or "delta" for an exact linear combination of the LoRAs
+)
+
+# Style arithmetic: formal minus casual.
+from true_lora import task_arithmetic
+state_dict, report = task_arithmetic(model, add=["formal writing"], subtract=["casual chat"])
+```
 
 ## Installation
 
@@ -394,6 +421,7 @@ true-lora/
 │   ├── apply.py             # LoRA application utilities
 │   ├── bank.py              # Adapter bank summary
 │   ├── benchmark.py         # Benchmarking utilities
+│   ├── compose.py           # Compositional LoRA / task arithmetic
 │   ├── cli.py               # Command-line interface
 │   ├── consistency.py       # Prompt consistency analysis
 │   ├── generator.py         # TrueLoraGenerator + conditioned hypernetwork (core)
